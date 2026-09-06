@@ -94,6 +94,14 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
     });
   });
 
+  test("trackUnmanagedFds: null means the default (Node: options.trackUnmanagedFds ?? true)", async () => {
+    expect(await probe("sync", "{ trackUnmanagedFds: null }")).toEqual({
+      stderr: "",
+      out: { during: true, after: false },
+      exitCode: 0,
+    });
+  });
+
   test("fs.open (callback) fd is auto-closed at worker exit", async () => {
     expect(await probe("async", "{}")).toEqual({
       stderr: "",
@@ -205,6 +213,40 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
       exitCode: 0,
     });
   }, 15_000); // Two worker startups in series; a debug build needs more than the default.
+
+  test("an async fs.close still queued on the pool at exit does not leak its fd", async () => {
+    // A pool job the worker's final wait reaches before it ran is handed back
+    // unrun (like Node's uv_cancel of queued work). The fd must stay tracked
+    // until the close has actually run, or the sweep cannot recover it. The
+    // big readFile jobs clog the pool so the closes are still queued at exit.
+    const worker =
+      `const fs = require("node:fs");` +
+      `const { workerData } = require("node:worker_threads");` +
+      `const fds = [];` +
+      `for (let i = 0; i < 300; i++) fds.push(fs.openSync(workerData.target, "r"));` +
+      `for (let i = 0; i < 128; i++) fs.readFile(workerData.big, () => {});` +
+      `for (const fd of fds) fs.close(fd, () => {});` +
+      `process.exit(0);`;
+    const fixture = `
+      const { Worker } = require("node:worker_threads");
+      const fs = require("node:fs");
+      const path = require("node:path");
+      ${openFdsSrc}
+      const target = path.join(process.cwd(), "probe.txt");
+      const big = path.join(process.cwd(), "big.bin");
+      fs.writeFileSync(target, "x");
+      fs.writeFileSync(big, new Uint8Array(8 << 20));
+      const ino = fs.statSync(target).ino;
+      const w = new Worker(${JSON.stringify(worker)}, { eval: true, workerData: { target, big } });
+      w.on("error", e => { console.error(e); process.exit(1); });
+      w.on("exit", () => console.log(JSON.stringify({ after: openFds(ino) })));
+    `;
+    expect(await run(fixture, "worker-track-unmanaged-fds-queued-close")).toEqual({
+      stderr: "",
+      out: { after: 0 },
+      exitCode: 0,
+    });
+  });
 
   test("fs.createReadStream fds mid-read are closed when the worker is terminated", async () => {
     // No raw fd in user code: ReadStream opens through the same native fs.open

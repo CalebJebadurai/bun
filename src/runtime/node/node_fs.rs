@@ -933,6 +933,11 @@ mod _async_tasks {
             let rc = this.req.result;
             this.result =
                 NodeFS::uv_dispatch_req::<R, A, F>(&mut node_fs, &this.args, &mut this.req, rc);
+            // The uv request ran, so untrack here: the completion below may be
+            // released unrun at teardown.
+            if let Some(fd) = this.args.closed_fd() {
+                this.global_object().bun_vm().as_mut().untrack_fd(fd);
+            }
             let this_ptr: *mut Self = this;
             this.global_object()
                 .bun_vm()
@@ -1013,6 +1018,23 @@ mod _async_tasks {
         fn signal(&self) -> Option<&AbortSignal> {
             None
         }
+        /// The fd this call closes, untracked from the worker-exit sweep once the
+        /// close has run (a pool job released unrun leaves it for the sweep).
+        fn closed_fd(&self) -> Option<FD> {
+            None
+        }
+    }
+
+    // SAFETY: `Close` is a bare fd.
+    unsafe impl ThreadIsolatedArg for args::Close {}
+    impl FsArgument for args::Close {
+        #[inline]
+        fn from_js(ctx: &JSGlobalObject, arguments: &mut ArgumentsSlice) -> JsResult<Self> {
+            args::Close::from_js(ctx, arguments)
+        }
+        fn closed_fd(&self) -> Option<FD> {
+            Some(self.fd)
+        }
     }
 
     /// Forward [`FsArgument`] to the inherent `from_js` each `args::*` struct
@@ -1058,7 +1080,6 @@ mod _async_tasks {
         args::Fchown,
         args::FChmod,
         args::Fstat,
-        args::Close,
         args::Futimes,
         args::FdataSync,
         args::Fsync,
@@ -1212,13 +1233,26 @@ mod _async_tasks {
 
     /// One `fs.promises.*` operation on the work pool. The arguments' JS-backed
     /// buffers are pinned and rooted (`ThreadIsolated`) and read under the job's ticket.
-    pub struct AsyncFSTask<R, A, const F: NodeFSFunctionEnum> {
+    pub struct AsyncFSTask<R, A: FsArgument, const F: NodeFSFunctionEnum> {
         pub args: ThreadIsolated<A>,
         pub(crate) result: Maybe<R>,
+        /// `run` executed, so an fd this op closed is gone even if the completion
+        /// is released unrun at teardown.
+        ran: bool,
+    }
+
+    impl<R, A: FsArgument, const F: NodeFSFunctionEnum> Drop for AsyncFSTask<R, A, F> {
+        fn drop(&mut self) {
+            if self.ran {
+                if let Some(fd) = self.args.closed_fd() {
+                    VirtualMachine::get().as_mut().untrack_fd(fd);
+                }
+            }
+        }
     }
     // SAFETY: results are plain data / owned buffers / WTF strings built off
     // thread for hand-off (`ret::*`); `ThreadIsolated<A>` is Send by its contract.
-    unsafe impl<R: FsReturn, A: ThreadIsolatedArg, const F: NodeFSFunctionEnum> Send
+    unsafe impl<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> Send
         for AsyncFSTask<R, A, F>
     {
     }
@@ -1244,6 +1278,7 @@ mod _async_tasks {
         ) -> Option<bun_jsc::Completion<Self>> {
             let mut node_fs = NodeFS::default();
             this.result = NodeFS::dispatch::<R, A, F>(&mut node_fs, &this.args, Flavor::Async);
+            this.ran = true;
             Some(done)
         }
 
@@ -1320,6 +1355,7 @@ mod _async_tasks {
                     // Sentinel — overwritten by `run` before any read. `Maybe<R>`
                     // may be niche-optimised; never construct an all-zero `Result`.
                     result: Err(sys::Error::default()),
+                    ran: false,
                 },
                 AsyncFSJs { promise, tracker },
             );
@@ -3424,8 +3460,6 @@ pub mod args {
     impl Close {
         pub fn from_js(ctx: &JSGlobalObject, arguments: &mut ArgumentsSlice) -> JsResult<Close> {
             let fd = FD::from_js_required(ctx, arguments)?;
-            // Untrack before the close runs, as Node does.
-            ctx.bun_vm().as_mut().untrack_fd(fd);
             Ok(Close { fd })
         }
     }

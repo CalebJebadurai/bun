@@ -44,6 +44,9 @@ where
     let result = this
         .node_fs
         .with_mut(|nfs| NodeFS::dispatch::<R, A, F>(nfs, &args, Flavor::Sync));
+    if let Some(fd) = args.closed_fd() {
+        global.bun_vm().as_mut().untrack_fd(fd);
+    }
     match result {
         Err(err) => Err(global.throw_value(err.to_js(global))),
         Ok(res) => res.fs_to_js(global),
