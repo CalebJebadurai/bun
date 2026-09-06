@@ -1252,10 +1252,7 @@ mod _async_tasks {
     }
     // SAFETY: results are plain data / owned buffers / WTF strings built off
     // thread for hand-off (`ret::*`); `ThreadIsolated<A>` is Send by its contract.
-    unsafe impl<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> Send
-        for AsyncFSTask<R, A, F>
-    {
-    }
+    unsafe impl<R: FsReturn, A: FsArgument, const F: NodeFSFunctionEnum> Send for AsyncFSTask<R, A, F> {}
 
     /// The JS-thread half of an async fs operation.
     #[derive(bun_jsc::JsAffine)]
