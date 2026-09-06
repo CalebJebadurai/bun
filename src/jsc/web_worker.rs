@@ -498,8 +498,9 @@ impl WebWorker {
                     .map(bun_errno::from_errno)
                     .unwrap_or(bun_errno::SystemErrno::EAGAIN);
                 // Node: ERR_WORKER_INIT_FAILED with the uv error name as the detail.
-                *error_message =
-                    BunString::clone_utf8(format!("Worker initialization failure: {errno}").as_bytes());
+                *error_message = BunString::clone_utf8(
+                    format!("Worker initialization failure: {errno}").as_bytes(),
+                );
                 *spawn_failed = true;
                 core::ptr::null_mut()
             }

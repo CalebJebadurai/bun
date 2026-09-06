@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
 import { bunEnv, bunExe, isLinux } from "harness";
+import { readdirSync, readFileSync } from "node:fs";
 
 // On Linux, threads count toward RLIMIT_NPROC (the same counter a cgroup
 // pids.max enforces). The kernel does not enforce the limit for root, so a
@@ -47,7 +47,9 @@ test.skipIf(!canLimitThreads)("a GC under a thread limit does not abort the proc
   // Room for the main thread only. The GC's parallel markers get no thread,
   // so a synchronous GC has to finish on the main thread. The heap has to be
   // big enough for the collector to ask for markers.
-  await using proc = spawnWithThreadLimit(1, `
+  await using proc = spawnWithThreadLimit(
+    1,
+    `
     let keep = [];
     for (let i = 0; i < 200; i++) {
       keep.push(new Array(10000).fill({ i }));
@@ -55,7 +57,8 @@ test.skipIf(!canLimitThreads)("a GC under a thread limit does not abort the proc
     }
     Bun.gc(true);
     console.log("ok");
-  `);
+  `,
+  );
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   expect(stdout).toBe("ok\n");
   expect(stderr).not.toContain("ASSERTION FAILED");
@@ -63,7 +66,9 @@ test.skipIf(!canLimitThreads)("a GC under a thread limit does not abort the proc
 });
 
 test.skipIf(!canLimitThreads)("new Worker throws ERR_WORKER_INIT_FAILED when the OS refuses the thread", async () => {
-  await using proc = spawnWithThreadLimit(6, `
+  await using proc = spawnWithThreadLimit(
+    6,
+    `
     const workers = [];
     let failure;
     for (let i = 0; i < 40 && !failure; i++) {
@@ -75,7 +80,8 @@ test.skipIf(!canLimitThreads)("new Worker throws ERR_WORKER_INIT_FAILED when the
     }
     console.log(JSON.stringify(failure));
     for (const w of workers) w.terminate();
-  `);
+  `,
+  );
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   expect(JSON.parse(stdout)).toEqual({
     code: "ERR_WORKER_INIT_FAILED",
