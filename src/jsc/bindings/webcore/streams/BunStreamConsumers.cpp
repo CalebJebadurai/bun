@@ -1700,8 +1700,10 @@ JSC_DEFINE_HOST_FUNCTION(jsWebStreamsHandler_boundOneShotDirectClose, (JSGlobalO
     MarkedArgumentBuffer noArguments;
     JSValue endResult = Bun::WebStreams::invokeMethod(vm, globalObject, sink->m_arrayBufferSink.get(), builtinNames(vm).endPublicName(), noArguments);
     RETURN_IF_EXCEPTION(scope, {});
-    if (auto* capability = sink->m_capabilityPromise.get(); capability && capability->status() == JSPromise::Status::Pending)
+    if (auto* capability = sink->m_capabilityPromise.get(); capability && capability->status() == JSPromise::Status::Pending) {
         capability->fulfill(vm, endResult);
+        RETURN_IF_EXCEPTION(scope, {});
+    }
     // The source's close() hook runs after the result is settled, like JSDirectStreamController::onClose.
     JSValue closeFunction = sink->m_closeFunction.get();
     if (closeFunction.toBoolean(globalObject)) {
