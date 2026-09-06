@@ -3314,6 +3314,39 @@ describe("bundler", () => {
     },
     run: { stdout: "a b" },
   });
+  // One decorated class per file, so `bun run` of the sources is fine. The
+  // linker flattens both modules into one scope, where the WeakMap behind
+  // each `#p` and the initializer array `_init` used to collide.
+  itBundled("edgecase/StandardDecoratorPrivateStorageAcrossFiles", {
+    files: {
+      "/entry.js": /* js */ `
+        import { a } from "./a";
+        import { B } from "./b";
+        import { Entity } from "./ent";
+        import { Action } from "./act";
+        new Action();
+        console.log(a.read(), new B().read(), new Entity().id);
+      `,
+      "/a.js": /* js */ `
+        function dec(_, _c) {}
+        export class A { @dec #p = "A.#p"; read() { return this.#p; } }
+        export const a = new A();
+      `,
+      "/b.js": /* js */ `
+        function dec(_, _c) {}
+        export class B { @dec #p = "B.#p"; read() { return this.#p; } }
+      `,
+      "/ent.js": /* js */ `
+        function Field(_, _c) {}
+        export class Entity { @Field id; }
+      `,
+      "/act.js": /* js */ `
+        function Acc(_, _c) { return { init: () => "success" }; }
+        export class Action { @Acc accessor status; }
+      `,
+    },
+    run: { stdout: "A.#p B.#p undefined" },
+  });
   itBundled("edgecase/StandardDecoratorTemporariesInSiblingBlocksMinified", {
     files: {
       "/entry.js": /* js */ `
