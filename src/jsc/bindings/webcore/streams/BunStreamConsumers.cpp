@@ -1697,6 +1697,14 @@ JSC_DEFINE_HOST_FUNCTION(jsWebStreamsHandler_boundOneShotDirectClose, (JSGlobalO
     if (sink->m_closed)
         return JSValue::encode(jsUndefined());
     sink->m_closed = true;
+    MarkedArgumentBuffer noArguments;
+    JSValue endResult = Bun::WebStreams::invokeMethod(vm, globalObject, sink->m_arrayBufferSink.get(), builtinNames(vm).endPublicName(), noArguments);
+    RETURN_IF_EXCEPTION(scope, {});
+    if (auto* capability = sink->m_capabilityPromise.get(); capability && capability->status() == JSPromise::Status::Pending)
+        capability->fulfill(vm, endResult);
+    // Same order as JSDirectStreamController::onClose: the user's close() hook runs once the
+    // result is settled, so a throw from it (an async iterator whose return() throws) propagates
+    // to whoever called end() instead of leaving the result pending.
     JSValue closeFunction = sink->m_closeFunction.get();
     if (closeFunction.toBoolean(globalObject)) {
         auto callData = JSC::getCallData(closeFunction);
@@ -1704,15 +1712,9 @@ JSC_DEFINE_HOST_FUNCTION(jsWebStreamsHandler_boundOneShotDirectClose, (JSGlobalO
             throwTypeError(globalObject, scope, "The 'close' member of a direct ReadableStream's underlying source is not a function"_s);
             return {};
         }
-        MarkedArgumentBuffer noArguments;
         JSC::call(globalObject, closeFunction, callData, jsUndefined(), noArguments);
         RETURN_IF_EXCEPTION(scope, {});
     }
-    MarkedArgumentBuffer noArguments;
-    JSValue endResult = Bun::WebStreams::invokeMethod(vm, globalObject, sink->m_arrayBufferSink.get(), builtinNames(vm).endPublicName(), noArguments);
-    RETURN_IF_EXCEPTION(scope, {});
-    if (auto* capability = sink->m_capabilityPromise.get(); capability && capability->status() == JSPromise::Status::Pending)
-        capability->fulfill(vm, endResult);
     return JSValue::encode(jsUndefined());
 }
 
