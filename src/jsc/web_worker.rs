@@ -278,8 +278,7 @@ impl WebWorker {
     /// Allocate the thread object (one ref, owned by the calling proxy), take a
     /// keep-alive on the parent event loop, register as a child of the parent VM,
     /// and spawn the thread. On any failure returns null with `error_message`
-    /// set and nothing to clean up. `spawn_failed` is set when the OS refused
-    /// the thread, so the caller can raise `ERR_WORKER_INIT_FAILED`.
+    /// set and nothing to clean up. `spawn_failed`: the OS refused the thread.
     #[unsafe(export_name = "WebWorker__create")]
     pub(crate) unsafe extern "C" fn create(
         proxy: *mut c_void,
@@ -485,8 +484,7 @@ impl WebWorker {
             Err(err) => {
                 // The thread's ref went down with the closure; ours drops on return.
                 worker_ref.with_parent_poll_ref(|p| p.unref(bun_io::js_vm_ctx()));
-                // Windows: raw_os_error() is a Win32 code, so it goes through the
-                // Win32Error mapper, not from_errno.
+                // Windows: raw_os_error() is a Win32 code, not an errno.
                 #[cfg(windows)]
                 let errno = err
                     .raw_os_error()
@@ -497,7 +495,6 @@ impl WebWorker {
                     .raw_os_error()
                     .map(bun_errno::from_errno)
                     .unwrap_or(bun_errno::SystemErrno::EAGAIN);
-                // Node: ERR_WORKER_INIT_FAILED with the uv error name as the detail.
                 *error_message = BunString::clone_utf8(
                     format!("Worker initialization failure: {errno}").as_bytes(),
                 );
