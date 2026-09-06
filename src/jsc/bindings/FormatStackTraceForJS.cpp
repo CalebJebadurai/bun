@@ -262,7 +262,7 @@ WTF::String formatStackTrace(
 
         if (!frame.hasLineAndColumnInfo()) continue;
 
-        originalLineColumns[i] = frame.computeLineAndColumn();
+        originalLineColumns[i] = Zig::lineColumnForStackFrame(frame);
 
         JSC::JSGlobalObject* globalObjectForFrame = lexicalGlobalObject;
         if (auto* callee = frame.callee()) {

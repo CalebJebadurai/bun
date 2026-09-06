@@ -4,6 +4,7 @@
 #include "JavaScriptCore/BytecodeIndex.h"
 #include "wtf/Assertions.h"
 #include "wtf/text/OrdinalNumber.h"
+#include "ErrorStackTrace.h"
 
 namespace Bun {
 using namespace JSC;
@@ -64,6 +65,15 @@ void adjustPositionBackwards(ZigStackFramePosition& pos, int amount, CodeBlock* 
 
 ZigStackFramePosition getAdjustedPositionForBytecode(JSC::CodeBlock* code, JSC::BytecodeIndex bc)
 {
+    auto classSource = Zig::classSourceOfDefaultConstructor(code);
+    if (!classSource.isNull()) {
+        return ZigStackFramePosition {
+            .line_zero_based = classSource.firstLine().zeroBasedInt(),
+            .column_zero_based = classSource.startColumn().zeroBasedInt(),
+            .byte_position = classSource.startOffset(),
+        };
+    }
+
     auto expr = code->expressionInfoForBytecodeIndex(bc);
 
     ZigStackFramePosition pos {

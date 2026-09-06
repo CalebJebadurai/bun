@@ -187,6 +187,15 @@ private:
 bool isImplementationVisibilityPrivate(JSC::StackVisitor& visitor);
 bool isImplementationVisibilityPrivate(const JSC::StackFrame& frame);
 
+// JSC synthesizes the constructor of a class that declares none from its own
+// source text, "(function () { })", which has no URL. A frame of that
+// constructor reports the class declaration instead. Returns that declaration's
+// source, or a null SourceCode for any other code block.
+JSC::SourceCode classSourceOfDefaultConstructor(JSC::CodeBlock* codeBlock);
+// The line and column a frame reports: the class declaration for a synthesized
+// constructor, otherwise what JSC computes for the frame.
+JSC::LineColumn lineColumnForStackFrame(const JSC::StackFrame& frame);
+
 String sourceURL(const JSC::SourceOrigin& origin);
 String sourceURL(JSC::SourceProvider* sourceProvider);
 String sourceURL(const JSC::SourceCode& sourceCode);

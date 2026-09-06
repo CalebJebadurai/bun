@@ -1223,3 +1223,88 @@ test.concurrent.each([[{}], [{ BUN_JSC_useSourceProviderCache: "0" }]])(
     expect(exitCode).toBe(0);
   },
 );
+
+// A class field initializer runs as a function of its own. Its frame must stay in the trace and report the field's
+// position. The constructor of a class that declares none is synthesized from JSC's own "(function () { })", which has
+// no URL, so its frame reports the class declaration instead.
+test("an exception in a class field initializer reports the field's position", async () => {
+  using dir = tempDir("class-field-initializer-frames", {
+    "fields.js": [
+      `const cfg = globalThis.nothingHere;`, // 1
+      `class Base {`, // 2
+      `  port = cfg.port;`, // 3
+      `}`, // 4
+      `class Derived extends Base {`, // 5
+      `  extra = 1;`, // 6
+      `}`, // 7
+      `class Explicit {`, // 8
+      `  port = cfg.port;`, // 9
+      `  constructor() {`, // 10
+      `    this.made = true;`, // 11
+      `  }`, // 12
+      `}`, // 13
+      `function makeStatic() {`, // 14
+      `  class Static {`, // 15
+      `    static port = cfg.port;`, // 16
+      `  }`, // 17
+      `}`, // 18
+      `const { basename } = require("node:path");`,
+      `function frames(fn, format) {`,
+      `  try { fn(); } catch (error) {`,
+      `    return { message: error.message, frames: format(error.stack) };`,
+      `  }`,
+      `}`,
+      `const lines = stack => stack.split("\\n").slice(1, 3).map(line => line.trim().replace(__dirname + "/", ""));`,
+      `const stacks = { derived: frames(() => new Derived(), lines), explicit: frames(() => new Explicit(), lines), static: frames(makeStatic, lines) };`,
+      `Error.prepareStackTrace = (_error, callSites) =>`,
+      `  callSites.slice(0, 2).map(callSite => ({`,
+      `    name: callSite.getFunctionName(),`,
+      `    file: basename(callSite.getFileName()),`,
+      `    line: callSite.getLineNumber(),`,
+      `    column: callSite.getColumnNumber(),`,
+      `    isConstructor: callSite.isConstructor(),`,
+      `  }));`,
+      `const callSites = frames(() => new Derived(), stack => stack);`,
+      `Error.prepareStackTrace = undefined;`,
+      `console.log(JSON.stringify({ stacks, callSites }));`,
+      `new Derived();`,
+    ].join("\n"),
+  });
+  await using proc = Bun.spawn({
+    cmd: [bunExe(), "fields.js"],
+    cwd: String(dir),
+    env: bunEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+  expect(stdout && JSON.parse(stdout)).toEqual({
+    stacks: {
+      derived: {
+        message: "undefined is not an object (evaluating 'cfg.port')",
+        frames: ["at <instance_members_initializer> (fields.js:3:10)", "at new Base (fields.js:2:1)"],
+      },
+      explicit: {
+        message: "undefined is not an object (evaluating 'cfg.port')",
+        frames: ["at <instance_members_initializer> (fields.js:9:10)", "at new Explicit (fields.js:10:17)"],
+      },
+      static: {
+        message: "undefined is not an object (evaluating 'cfg.port')",
+        frames: ["at <static_initializer> (fields.js:16:19)", "at makeStatic (fields.js:15:3)"],
+      },
+    },
+    callSites: {
+      message: "undefined is not an object (evaluating 'cfg.port')",
+      frames: [
+        { name: "<instance_members_initializer>", file: "fields.js", line: 3, column: 10, isConstructor: false },
+        { name: "Base", file: "fields.js", line: 2, column: 1, isConstructor: true },
+      ],
+    },
+  });
+  // The uncaught error printer excerpts the field's line, not JSC's "(function () { })".
+  expect(stderr).toContain("3 |   port = cfg.port;");
+  expect(stderr).toMatch(/at <instance_members_initializer> \(.*fields\.js:3:10\)/);
+  expect(stderr).toMatch(/at new Base \(.*fields\.js:2:1\)/);
+  expect(stderr).toMatch(/at new Derived \(.*fields\.js:5:1\)/);
+  expect(exitCode).toBe(1);
+});

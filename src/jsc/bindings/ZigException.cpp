@@ -135,7 +135,10 @@ static void populateStackFramePosition(const JSC::StackFrame& stackFrame, BunStr
     if (!code)
         return;
 
-    auto* provider = code->source().provider();
+    JSC::SourceCode source = Zig::classSourceOfDefaultConstructor(code);
+    if (source.isNull())
+        source = code->source();
+    auto* provider = source.provider();
     if (!provider) [[unlikely]]
         return;
     // Make sure the range is valid:

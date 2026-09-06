@@ -386,14 +386,46 @@ String sourceURL(const JSC::SourceCode& sourceCode)
     return sourceURL(sourceCode.provider());
 }
 
+JSC::SourceCode classSourceOfDefaultConstructor(JSC::CodeBlock* codeBlock)
+{
+    if (!codeBlock || codeBlock->codeType() != JSC::FunctionCode) {
+        return {};
+    }
+
+    auto* unlinkedExecutable = jsCast<JSC::FunctionExecutable*>(codeBlock->ownerExecutable())->unlinkedExecutable();
+    if (!unlinkedExecutable->isBuiltinDefaultClassConstructor()) {
+        return {};
+    }
+
+    return unlinkedExecutable->classSource();
+}
+
+JSC::LineColumn lineColumnForStackFrame(const JSC::StackFrame& frame)
+{
+    if (!frame.hasLineAndColumnInfo()) {
+        return {};
+    }
+
+    auto classSource = classSourceOfDefaultConstructor(frame.codeBlock());
+    if (!classSource.isNull()) {
+        return { static_cast<unsigned>(classSource.firstLine().oneBasedInt()), static_cast<unsigned>(classSource.startColumn().oneBasedInt()) };
+    }
+
+    return frame.computeLineAndColumn();
+}
+
 String sourceURL(JSC::CodeBlock& codeBlock)
 {
     if (!codeBlock.ownerExecutable()) {
         return String();
     }
 
-    const auto& source = codeBlock.source();
-    return sourceURL(source);
+    auto classSource = classSourceOfDefaultConstructor(&codeBlock);
+    if (!classSource.isNull()) {
+        return sourceURL(classSource);
+    }
+
+    return sourceURL(codeBlock.source());
 }
 
 String sourceURL(JSC::CodeBlock* codeBlock)
