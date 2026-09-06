@@ -204,8 +204,7 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
       out: { ok: true, during: 1, after: 0 },
       exitCode: 0,
     });
-  }, // Two worker startups in series; a debug build needs more than the default.
-  15_000);
+  }, 15_000); // Two worker startups in series; a debug build needs more than the default.
 
   test("fs.createReadStream fds mid-read are closed when the worker is terminated", async () => {
     // No raw fd in user code: ReadStream opens through the same native fs.open
