@@ -165,27 +165,25 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
     });
   });
 
-  test(
-    "a FileHandle transferred to a nested worker is owned by the receiver",
-    async () => {
-      // The sender gives the fd up on transfer; the receiver owns it and its
-      // teardown closes it. Neither side leaks it and the receiver can use it.
-      const inner =
-        `const { parentPort, workerData } = require("node:worker_threads");` +
-        `const fs = require("node:fs");` +
-        `const fd = workerData.handle.fd;` +
-        `let ok; try { ok = fs.fstatSync(fd).ino === workerData.ino; } catch { ok = false; }` +
-        `parentPort.postMessage({ ok });` +
-        `setInterval(() => {}, 1e9);`;
-      const outer =
-        `const { Worker, parentPort, workerData } = require("node:worker_threads");` +
-        `require("node:fs").promises.open(workerData.target, "r").then(handle => {` +
-        `  const w = new Worker(${JSON.stringify(inner)}, {` +
-        `    eval: true, workerData: { handle, ino: workerData.ino }, transferList: [handle],` +
-        `  });` +
-        `  w.on("message", m => parentPort.postMessage(m));` +
-        `});`;
-      const fixture = `
+  test("a FileHandle transferred to a nested worker is owned by the receiver", async () => {
+    // The sender gives the fd up on transfer; the receiver owns it and its
+    // teardown closes it. Neither side leaks it and the receiver can use it.
+    const inner =
+      `const { parentPort, workerData } = require("node:worker_threads");` +
+      `const fs = require("node:fs");` +
+      `const fd = workerData.handle.fd;` +
+      `let ok; try { ok = fs.fstatSync(fd).ino === workerData.ino; } catch { ok = false; }` +
+      `parentPort.postMessage({ ok });` +
+      `setInterval(() => {}, 1e9);`;
+    const outer =
+      `const { Worker, parentPort, workerData } = require("node:worker_threads");` +
+      `require("node:fs").promises.open(workerData.target, "r").then(handle => {` +
+      `  const w = new Worker(${JSON.stringify(inner)}, {` +
+      `    eval: true, workerData: { handle, ino: workerData.ino }, transferList: [handle],` +
+      `  });` +
+      `  w.on("message", m => parentPort.postMessage(m));` +
+      `});`;
+    const fixture = `
         const { Worker } = require("node:worker_threads");
         const fs = require("node:fs");
         const path = require("node:path");
@@ -201,15 +199,13 @@ describe.concurrent.skipIf(isWindows)("Worker trackUnmanagedFds", () => {
           console.log(JSON.stringify({ ok: m.ok, during, after: openFds(ino) }));
         });
       `;
-      expect(await run(fixture, "worker-track-unmanaged-fds-transfer")).toEqual({
-        stderr: "",
-        out: { ok: true, during: 1, after: 0 },
-        exitCode: 0,
-      });
-    },
-    // Two worker startups in series; a debug build needs more than the default.
-    15_000,
-  );
+    expect(await run(fixture, "worker-track-unmanaged-fds-transfer")).toEqual({
+      stderr: "",
+      out: { ok: true, during: 1, after: 0 },
+      exitCode: 0,
+    });
+  }, // Two worker startups in series; a debug build needs more than the default.
+  15_000);
 
   test("fs.createReadStream fds mid-read are closed when the worker is terminated", async () => {
     // No raw fd in user code: ReadStream opens through the same native fs.open
