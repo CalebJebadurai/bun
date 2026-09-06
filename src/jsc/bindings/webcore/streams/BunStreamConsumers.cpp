@@ -1702,9 +1702,7 @@ JSC_DEFINE_HOST_FUNCTION(jsWebStreamsHandler_boundOneShotDirectClose, (JSGlobalO
     RETURN_IF_EXCEPTION(scope, {});
     if (auto* capability = sink->m_capabilityPromise.get(); capability && capability->status() == JSPromise::Status::Pending)
         capability->fulfill(vm, endResult);
-    // Same order as JSDirectStreamController::onClose: the user's close() hook runs once the
-    // result is settled, so a throw from it (an async iterator whose return() throws) propagates
-    // to whoever called end() instead of leaving the result pending.
+    // The source's close() hook runs after the result is settled, like JSDirectStreamController::onClose.
     JSValue closeFunction = sink->m_closeFunction.get();
     if (closeFunction.toBoolean(globalObject)) {
         auto callData = JSC::getCallData(closeFunction);
