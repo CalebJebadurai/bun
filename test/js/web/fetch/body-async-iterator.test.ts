@@ -76,20 +76,16 @@ function iterableWithThrowingReturn(log: string[]) {
 }
 
 for (const method of ["bytes", "arrayBuffer", "text", "blob"] as const) {
-  test(
-    `Response.${method}() settles when the async iterator's return() throws`,
-    async () => {
-      const log: string[] = [];
-      const result = await new Response(iterableWithThrowingReturn(log) as any)[method]();
-      const bytes =
-        result instanceof Blob
-          ? new Uint8Array(await result.arrayBuffer())
-          : typeof result === "string"
-            ? new TextEncoder().encode(result)
-            : new Uint8Array(result as ArrayBuffer);
-      expect(Array.from(bytes)).toEqual([1, 1, 1, 2, 2, 2]);
-      expect(log).toEqual(["next0", "next1", "next2", "return"]);
-    },
-    5000,
-  );
+  test(`Response.${method}() settles when the async iterator's return() throws`, async () => {
+    const log: string[] = [];
+    const result = await new Response(iterableWithThrowingReturn(log) as any)[method]();
+    const bytes =
+      result instanceof Blob
+        ? new Uint8Array(await result.arrayBuffer())
+        : typeof result === "string"
+          ? new TextEncoder().encode(result)
+          : new Uint8Array(result as ArrayBuffer);
+    expect(Array.from(bytes)).toEqual([1, 1, 1, 2, 2, 2]);
+    expect(log).toEqual(["next0", "next1", "next2", "return"]);
+  }, 5000);
 }
