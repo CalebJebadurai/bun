@@ -76,6 +76,8 @@ pub struct WebWorker {
     /// constructor): loads `node:worker_threads` before preloads and the entry point.
     is_node_worker: bool,
     store_fd: bool,
+    /// node:worker_threads `trackUnmanagedFds`.
+    track_unmanaged_fds: bool,
     /// Borrowed from the proxy's `WorkerOptions` (alive as long as the proxy).
     argv_ptr: *const WTFStringImpl,
     argv_len: usize,
@@ -292,6 +294,7 @@ impl WebWorker {
         default_unref: bool,
         eval_mode: bool,
         is_node_worker: bool,
+        track_unmanaged_fds: bool,
         argv_ptr: *const WTFStringImpl,
         argv_len: usize,
         inherit_exec_argv: bool,
@@ -407,6 +410,7 @@ impl WebWorker {
             eval_mode,
             is_node_worker,
             store_fd,
+            track_unmanaged_fds,
             argv_ptr,
             argv_len,
             exec_argv_ptr,
@@ -715,6 +719,9 @@ impl WebWorker {
             vm_ref.is_main_thread = false;
             VirtualMachine::set_is_main_thread_vm(false);
             vm_ref.on_unhandled_rejection = on_unhandled_rejection;
+            if self.track_unmanaged_fds {
+                vm_ref.unmanaged_fds = Some(Vec::new());
+            }
         }
 
         // Publish now (rather than at the end of startVM) so that:
@@ -1020,6 +1027,12 @@ impl WebWorker {
             let vm = unsafe { &mut *vm_ptr };
             vm.is_shutting_down = true;
             vm.on_exit();
+            // trackUnmanagedFds sweep; after on_exit() so 'exit' handlers can close their own fds.
+            if let Some(fds) = vm.unmanaged_fds.take() {
+                for fd in fds {
+                    let _ = bun_sys::FdExt::close_allowing_standard_io(fd, None);
+                }
+            }
             exit_code = i32::from(vm.exit_handler.exit_code);
             log!(
                 "[{}] shutdown: exit handlers done",

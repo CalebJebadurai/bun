@@ -335,6 +335,8 @@ pub struct VirtualMachine {
     /// The door out of this thread (`bun_jsc::vm_handle`): tickets for work
     /// that leaves it are taken here, and `teardown` waits on it.
     handle: core::mem::ManuallyDrop<crate::VmHandle>,
+    /// `trackUnmanagedFds`: raw `fs.open` fds to close at worker exit; `None` = not tracking.
+    pub unmanaged_fds: Option<Vec<bun_sys::Fd>>,
     pub pending_ipc: Option<PendingIpc>,
     pub hot_reload_counter: u32,
 
@@ -2667,6 +2669,7 @@ impl VirtualMachine {
                 .write(core::mem::ManuallyDrop::new(crate::VmHandle::new(vm)));
             addr_of_mut!((*vm).argv).write(Vec::new());
             addr_of_mut!((*vm).resolved_path_dups).write(Vec::new());
+            addr_of_mut!((*vm).unmanaged_fds).write(None);
             addr_of_mut!((*vm).macros).write(Default::default());
             addr_of_mut!((*vm).macro_entry_points).write(Default::default());
             addr_of_mut!((*vm).auto_killer).write(Default::default());
@@ -5047,6 +5050,24 @@ impl VirtualMachine {
         self.wakeup();
         self.auto_tick();
         Ok(self.pending_internal_promise.unwrap())
+    }
+
+    /// `trackUnmanagedFds`: record a raw `fs.open` fd for close at worker exit.
+    #[inline]
+    pub fn add_unmanaged_fd(&mut self, fd: bun_sys::Fd) {
+        if let Some(set) = self.unmanaged_fds.as_mut() {
+            set.push(fd);
+        }
+    }
+
+    /// `trackUnmanagedFds`: forget an fd that user code closed or wrapped in a FileHandle.
+    #[inline]
+    pub fn remove_unmanaged_fd(&mut self, fd: bun_sys::Fd) {
+        if let Some(set) = self.unmanaged_fds.as_mut() {
+            if let Some(i) = set.iter().position(|&f| f == fd) {
+                set.swap_remove(i);
+            }
+        }
     }
 
     /// Tracks a listening socket so watch-mode reloads can close it.

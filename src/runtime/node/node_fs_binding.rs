@@ -250,6 +250,18 @@ impl Binding {
             Ok(res) => Ok(res),
         }
     }
+
+    /// `fs.promises.open` untracks its fd once a FileHandle owns it.
+    pub fn untrack_fd(
+        _this: &Self,
+        global: &JSGlobalObject,
+        frame: &CallFrame,
+    ) -> JsResult<JSValue> {
+        if let Some(fd) = <bun_sys::Fd as bun_sys_jsc::FdJsc>::from_js(frame.argument(0)) {
+            global.bun_vm().as_mut().remove_unmanaged_fd(fd);
+        }
+        Ok(JSValue::UNDEFINED)
+    }
 }
 
 /// Generates the `pub const <name> = call{Async,Sync}(.<fn>)` block.

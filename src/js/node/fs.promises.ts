@@ -299,7 +299,10 @@ const exports = {
     // Buffer/URL toString cannot leak the fd, and the registry never retains
     // the caller's object.
     const pathForDiag = typeof path === "string" ? path : path == null ? undefined : String(path);
-    return new private_symbols.FileHandle(await fs.open(path, flags, mode), flags, pathForDiag);
+    const fd = await fs.open(path, flags, mode);
+    // FileHandle fds are managed, not tracked by trackUnmanagedFds (matches Node).
+    fs.untrackFd(fd);
+    return new private_symbols.FileHandle(fd, flags, pathForDiag);
   },
   read: asyncWrap(fs.read, "read"),
   write: asyncWrap(fs.write, "write"),
