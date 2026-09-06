@@ -299,10 +299,7 @@ const exports = {
     // Buffer/URL toString cannot leak the fd, and the registry never retains
     // the caller's object.
     const pathForDiag = typeof path === "string" ? path : path == null ? undefined : String(path);
-    const fd = await fs.open(path, flags, mode);
-    // FileHandle fds are managed, not tracked by trackUnmanagedFds (matches Node).
-    fs.untrackFd(fd);
-    return new private_symbols.FileHandle(fd, flags, pathForDiag);
+    return new private_symbols.FileHandle(await fs.open(path, flags, mode), flags, pathForDiag);
   },
   read: asyncWrap(fs.read, "read"),
   write: asyncWrap(fs.write, "write"),
@@ -432,6 +429,7 @@ function asyncWrap(fn: any, name: string) {
       this[kClosePromise] = null;
       this[kFlag] = flag;
       if (this[kFd] !== -1) {
+        fs.trackFd(fd);
         (fileHandleRegistry ??= new FinalizationRegistry(onFileHandleCollected)).register(this, { fd, path }, this);
       }
     }
@@ -1509,6 +1507,7 @@ function asyncWrap(fn: any, name: string) {
       const flag = this[kFlag];
       this[kFd] = -1;
       fileHandleRegistry?.unregister(this);
+      fs.untrackFd(fd);
       return {
         data: { fd, flag },
         deserializeInfo: "internal/fs/promises:FileHandle",
@@ -1523,6 +1522,7 @@ function asyncWrap(fn: any, name: string) {
       this[kFd] = fd;
       this[kFlag] = flag;
       if (fd !== -1) {
+        fs.trackFd(fd);
         (fileHandleRegistry ??= new FinalizationRegistry(onFileHandleCollected)).register(
           this,
           { fd, path: undefined },

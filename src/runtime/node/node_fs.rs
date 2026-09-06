@@ -1146,7 +1146,7 @@ mod _async_tasks {
         #[inline]
         fn fs_to_js(self, global: &JSGlobalObject) -> JsResult<JSValue> {
             // Only `ret::Open` is `FD`: every fs.open/openSync flavor returns its fd here.
-            global.bun_vm().as_mut().add_unmanaged_fd(self);
+            global.bun_vm().as_mut().track_unmanaged_fd(self);
             Ok(crate::node::types::FdJsc::to_js(self, global))
         }
     }
@@ -3425,7 +3425,7 @@ pub mod args {
         pub fn from_js(ctx: &JSGlobalObject, arguments: &mut ArgumentsSlice) -> JsResult<Close> {
             let fd = FD::from_js_required(ctx, arguments)?;
             // Untrack before the close runs, as Node does.
-            ctx.bun_vm().as_mut().remove_unmanaged_fd(fd);
+            ctx.bun_vm().as_mut().untrack_fd(fd);
             Ok(Close { fd })
         }
     }

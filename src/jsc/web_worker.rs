@@ -719,9 +719,8 @@ impl WebWorker {
             vm_ref.is_main_thread = false;
             VirtualMachine::set_is_main_thread_vm(false);
             vm_ref.on_unhandled_rejection = on_unhandled_rejection;
-            if self.track_unmanaged_fds {
-                vm_ref.unmanaged_fds = Some(Vec::new());
-            }
+            vm_ref.exit_fds = Some(Vec::new());
+            vm_ref.track_unmanaged_fds = self.track_unmanaged_fds;
         }
 
         // Publish now (rather than at the end of startVM) so that:
@@ -1027,12 +1026,6 @@ impl WebWorker {
             let vm = unsafe { &mut *vm_ptr };
             vm.is_shutting_down = true;
             vm.on_exit();
-            // trackUnmanagedFds sweep; after on_exit() so 'exit' handlers can close their own fds.
-            if let Some(fds) = vm.unmanaged_fds.take() {
-                for fd in fds {
-                    let _ = bun_sys::FdExt::close_allowing_standard_io(fd, None);
-                }
-            }
             exit_code = i32::from(vm.exit_handler.exit_code);
             log!(
                 "[{}] shutdown: exit handlers done",
