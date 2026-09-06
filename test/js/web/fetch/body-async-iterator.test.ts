@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe } from "harness";
 
 test("Response.bytes() with async iterable body does not crash with null deref", async () => {
@@ -65,18 +65,17 @@ function iterableWithThrowingReturn(log: string[]) {
           log.push(`next${n}`);
           return n++ < 2 ? { value: new Uint8Array(3).fill(n), done: false } : { done: true, value: undefined };
         },
-        return(value: unknown) {
+        return() {
           log.push("return");
           throw new RangeError("ret");
-          return { done: true, value };
         },
       };
     },
   };
 }
 
-for (const method of ["bytes", "arrayBuffer", "text", "blob"] as const) {
-  test(`Response.${method}() settles when the async iterator's return() throws`, async () => {
+describe.each(["bytes", "arrayBuffer", "text", "blob"] as const)("Response.%s()", method => {
+  test("settles when the async iterator's return() throws", async () => {
     const log: string[] = [];
     const result = await new Response(iterableWithThrowingReturn(log) as any)[method]();
     const bytes =
@@ -87,5 +86,5 @@ for (const method of ["bytes", "arrayBuffer", "text", "blob"] as const) {
           : new Uint8Array(result as ArrayBuffer);
     expect(Array.from(bytes)).toEqual([1, 1, 1, 2, 2, 2]);
     expect(log).toEqual(["next0", "next1", "next2", "return"]);
-  }, 5000);
-}
+  });
+});
