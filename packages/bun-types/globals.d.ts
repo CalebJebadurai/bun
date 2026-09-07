@@ -1350,7 +1350,16 @@ interface ImportMeta {
    *
    * @deprecated Use `require.resolve` or `Bun.resolveSync(moduleId, path.dirname(parent))` instead
    */
-  resolveSync(moduleId: string, parent?: string): string;
+  resolveSync(moduleId: string, parent?: string | URL): string;
+
+  /**
+   * Resolve a module specifier as though it were imported from `parent`.
+   *
+   * @param specifier The module specifier to resolve
+   * @param parent Optional parent URL or path to resolve against (defaults to current module)
+   * @returns A promise that resolves to the resolved URL string
+   */
+  resolve(specifier: string, parent?: string | URL): Promise<string>;
 
   /**
    * Load a CommonJS module within an ES Module. Bun's transpiler rewrites all
